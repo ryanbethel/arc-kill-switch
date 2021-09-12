@@ -1,27 +1,24 @@
 @app
 arc-kill-switch
 
-@macros
-dns
-
-@cdn
-false # important; if we don't have this the deploy script will disable
-
 @http
-get /healthcheck
-post /testdestroy
-post /testsoftkill
+get /
 
-@proxy
-testing http://localhost:4000
-staging https://4bhecjec2m.execute-api.us-east-1.amazonaws.com
-production https://4bhecjec2m.execute-api.us-east-1.amazonaws.com
+@macros
+kill-switch
 
-@dns
-http
-  staging staging.explorebegin.com
-  production explorebegin.com
+@kill-switch
+limit $1
+
+@events
+an-event
+
+@tables
+data
+  scopeID *String
+  dataID **String
+  ttl TTL
 
 @aws
 region us-east-1
-profile begin-examples
+profile default

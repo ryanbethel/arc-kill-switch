@@ -11,6 +11,8 @@
     "@architect/architect": "^9.0.0",
     "@architect/destroy": "^2.0.1",
     "@architect/functions": "^3.13.3",
+    "@aws-sdk/client-lambda": "^3.31.0",
+    "@aws-sdk/client-resource-groups-tagging-api": "^3.31.0",
     "extract-domain": "^2.2.1"
   },
   "devDependencies": {

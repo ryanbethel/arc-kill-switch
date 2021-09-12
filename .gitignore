@@ -1,4 +1,5 @@
 node_modules
-src/frontend/static.json
+static.json
 sam.json
 sam.yaml
+preferences.arc
