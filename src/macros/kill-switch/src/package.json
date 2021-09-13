@@ -12,6 +12,7 @@
     "@aws-sdk/client-cloudformation": "^3.30.0",
     "@aws-sdk/client-cost-explorer": "^3.30.0",
     "@aws-sdk/client-lambda": "^3.31.0",
-    "@aws-sdk/client-resource-groups-tagging-api": "^3.31.0"
+    "@aws-sdk/client-resource-groups-tagging-api": "^3.31.0",
+    "date-fns": "^2.23.0"
   }
 }

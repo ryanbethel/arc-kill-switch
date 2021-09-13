@@ -15,6 +15,7 @@ module.exports = function costDetection (arc, cfn) {
     let schedulePermission = `${name}ScheduledPermission`
     let appName = toLogicalID(arc.app[0])
     let src = path.resolve(__dirname, './src')
+    let costLimit = arc['kill-switch'] && arc['kill-switch'][0] === 'limit' ? arc['kill-switch'][0].replace('$', '').toNumber() : 10
 
 
 
@@ -27,8 +28,9 @@ module.exports = function costDetection (arc, cfn) {
       ARC_ROLE: { Ref: 'Role' },
       NODE_ENV: 'staging', // Same as above, always default to staging; userland may mutate
       SESSION_TABLE_NAME: 'jwe',
-      KILL_SWITCH_LIMIT: arc['kill-switch'] && arc['kill-switch'][0] === 'limit' ? arc['kill-switch'][0].replace('$', '').toNumber() : 10,
-      COST_CATEGORY: { Ref: 'StackCostCategory' }
+      KILL_SWITCH_LIMIT: costLimit,
+      COST_CATEGORY: { Ref: 'StackCostCategory' },
+      COST_LAMBDA: scheduleLambda
     }
 
     // Add Lambda resources
@@ -41,12 +43,6 @@ module.exports = function costDetection (arc, cfn) {
         MemorySize: 1152,
         Timeout: 5,
         Environment: { Variables },
-        // Role: {
-        //   'Fn::Sub': [
-        //     'arn:aws:iam::${AWS::AccountId}:role/${roleName}',
-        //     { roleName: { Ref: 'Role' } }
-        //   ]
-        // },
         Policies: [
           { 'Statement': [ {
             'Effect': 'Allow',
@@ -94,33 +90,48 @@ module.exports = function costDetection (arc, cfn) {
     }
 
 
-    cfn.Resources['StackCostCategory'] = {
-      Type: 'AWS::CE::CostCategory',
-      Properties: {
-        Name: { 'Fn::Sub': '${AWS::StackName}Cost' },
-        RuleVersion: 'CostCategoryExpression.v1',
-        Rules: { 'Fn::Sub': '[ {"Value": "StackResources", "Rule": { "Tags": { "Key": "aws:cloudformation:stack-name", "Values": ["${AWS::StackName}"] } } } ]' }
-      }
+    // cfn.Resources['StackCostCategory'] = {
+    //   Type: 'AWS::CE::CostCategory',
+    //   Properties: {
+    //     Name: { 'Fn::Sub': '${AWS::StackName}Cost' },
+    //     RuleVersion: 'CostCategoryExpression.v1',
+    //     Rules: { 'Fn::Sub': '[ {"Value": "StackResources", "Rule": { "Tags": { "Key": "aws:cloudformation:stack-name", "Values": ["${AWS::StackName}"] } } } ]' }
+    //   }
+    // }
+
+    cfn.Resources['StackBudget'] = {
+      'Type': 'AWS::Budgets::Budget',
+      'Properties': {
+        'Budget': {
+          'BudgetLimit': {
+            'Amount': costLimit,
+            'Unit': 'USD'
+          },
+          'TimeUnit': 'MONTHLY',
+        },
+        'BudgetType': 'COST',
+        'CostFilters': {
+          Tags: { 'Key': 'aws:cloudformation:stack-name', 'Values': [ { Ref: 'AWS::StackName' } ] }
+        }
+      },
+      'NotificationsWithSubscribers': [
+        {
+          'Notification': {
+            'NotificationType': 'ACTUAL',
+            'ComparisonOperator': 'GREATER_THAN',
+            'Threshold': 99
+          },
+          'Subscribers': [
+            {
+              'SubscriptionType': 'SNS',
+              'Address': 'email2@example.com'
+            }
+          ]
+        }
+      ]
     }
 
 
-    // cfn.Resources.Role.Properties.Policies.push( {
-    //  'PolicyName': 'KillSwitchSpecialPolicy',
-    //  'PolicyDocument': {
-    //    'Statement': [
-    //      {
-    //        'Effect': 'Allow',
-    //        'Action': [
-    //          'ce:*'
-    //        ],
-    //        //'Resource': { 'Ref': scheduleLambda }
-
-    //        "Resource": "arn:aws:logs:*:*:*"
-    //      }
-    //    ]
-    //  }
-    // })
-    // console.log(cfn.Resources.Role.Properties.Policies)
   }
   return cfn
 }

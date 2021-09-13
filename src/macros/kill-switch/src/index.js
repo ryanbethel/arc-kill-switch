@@ -1,63 +1,61 @@
 let { CostExplorerClient, GetCostAndUsageCommand, GetCostCategoriesCommand } = require('@aws-sdk/client-cost-explorer')
-let { CloudFormationClient, DescribeStackResourcesCommand,  ListStackResourcesCommand } = require('@aws-sdk/client-cloudformation')
-const { LambdaClient, PutFunctionConcurrencyCommand } = require('@aws-sdk/client-lambda') // CommonJS import
-const { ResourceGroupsTaggingAPIClient, GetResourcesCommand } = require('@aws-sdk/client-resource-groups-tagging-api') // CommonJS import
-// let begin = require('@begin/data')
+let { LambdaClient, PutFunctionConcurrencyCommand } = require('@aws-sdk/client-lambda')
+let { ResourceGroupsTaggingAPIClient, GetResourcesCommand } = require('@aws-sdk/client-resource-groups-tagging-api')
+let { format, startOfMonth } = require('date-fns')
 
 let costLimit = process.env.KILL_SWITCH_LIMIT
 let costCategory = process.env.COST_CATEGORY
+let stackName = process.env.ARC_CLOUDFORMATION
+let costLambda = process.env.COST_LAMBDA
 let costConfig = {}
+let firstDay = format(startOfMonth(Date.now()), 'yyyy-MM-dd')
+let today = format(Date.now(), 'yyyy-MM-dd')
+console.log({ firstDay, today })
 let costInput = {
   Granularity: 'MONTHLY',
   Filter: {
-    CostCategories: {
-      Key: 'CostCategory',
-      MatchOptions: [ 'EQUALS' ],
-      // Values: [ costCategory ]
-      Values: [ 'ArcKillSwitchStagingCost' ]
-    } },
+    Tags: { 'Key': 'aws:cloudformation:stack-name', 'Values': [ stackName ] }
+  },
   Metrics: [ 'AmortizedCost', 'BlendedCost' ],
   TimePeriod: {
-    Start: '2021-09-01',
-    End: '2021-09-30',
+    Start: firstDay,
+    End: today,
   }
 }
 
-const resourceConfig = { region: 'us-east-1' }
-const resourceInput = { 'ResourceTypeFilters': [ 'lambda' ], 'TagFilters': [ { 'Key': 'aws:cloudformation:stack-name', 'Values': [ 'ArcKillSwitchStaging' ] } ] }
+let resourceConfig = { region: 'us-east-1' }
+let resourceInput = { 'ResourceTypeFilters': [ 'lambda' ], 'TagFilters': [ { 'Key': 'aws:cloudformation:stack-name', 'Values': [ stackName ] } ] }
 
-const resourceClient = new ResourceGroupsTaggingAPIClient(resourceConfig)
-const resourceCommand = new GetResourcesCommand(resourceInput)
+let resourceClient = new ResourceGroupsTaggingAPIClient(resourceConfig)
+let resourceCommand = new GetResourcesCommand(resourceInput)
 
 let lambdaClient = new LambdaClient({ region: 'us-east-1' })
-const lambdaCommand = new PutFunctionConcurrencyCommand({ FunctionName: 'arn:aws:lambda:us-east-1:619631856276:function:ArcKillSwitchStaging-AnEventEventLambda-jXGIxEc2XFPk', ReservedConcurrentExecutions: 0 })
 
-// let costClient = new CostExplorerClient(costConfig)
-// let costCommand = new GetCostAndUsageCommand(costInput)
-
-// let cfnConfig = { region: 'us-east-1' }
-// let cfnInput = { StackName: 'ArcKillSwitchStaging' }
-// let cfnClient = new CloudFormationClient(cfnConfig)
-// let cfnCommand = new ListStackResourcesCommand(cfnInput)
-
-// let catCommand = new GetCostCategoriesCommand(catInput);
-// let response = await client.send(command)
-
-
+let costClient = new CostExplorerClient(costConfig)
+let costCommand = new GetCostAndUsageCommand(costInput)
 
 exports.handler =  async function handler (event) {
 
-  console.log(JSON.stringify(event, null, 2))
 
-  // let costResponse  = await costClient.send(costCommand)
-  //  console.log(costResponse.ResultsByTime[0])
+  let costResponse  = await costClient.send(costCommand)
+  let cost = costResponse.ResultsByTime[0].Total.BlendedCost.Amount
+  console.log(costResponse.ResultsByTime[0].Total.BlendedCost.Amount)
 
-  // let response = await cfnClient.send(cfnCommand)
+  if (cost > 0){
+  // if (cost > costLimit){
 
-  let  response = await resourceClient.send(resourceCommand)
-  let lambdaResponse = await lambdaClient.send(lambdaCommand)
-  console.log(response)
-
+    let resourceResponse = await resourceClient.send(resourceCommand)
+    let lambdas = resourceResponse.ResourceTagMappingList
+    let lambdaFiltered = lambdas.filter(func => !func.ResourceARN.includes(stackName + '_' + costLambda)).map(func => func.ResourceArn)
+    let lambdaCommands = await Promise.all(lambdaFiltered.map(lambda => {
+      let lambdaCommand = new PutFunctionConcurrencyCommand({ FunctionName: lambda, ReservedConcurrentExecutions: 0 })
+      return  lambdaClient.send(lambdaCommand)
+    }))
+    console.log(lambdaCommands)
+    console.log(lambdas)
+    console.log(lambdaFiltered)
+  }
+  console.log(costResponse)
   return
 }
 
