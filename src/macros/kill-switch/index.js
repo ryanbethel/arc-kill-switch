@@ -4,21 +4,17 @@ let path = require('path')
 
 module.exports = function costDetection (arc, cfn) {
 
-  let killSwitch = arc.macros.includes('kill-switch')
+  let killSwitch = arc['kill-switch']
 
   if (killSwitch) {
 
-    let rule = 'rate(8 hours)'
     let name = toLogicalID('kill-switch')
-    let scheduleLambda = `${name}ScheduledLambda`
-    let scheduleEvent = `${name}ScheduledEvent`
-    let schedulePermission = `${name}ScheduledPermission`
     let appName = toLogicalID(arc.app[0])
     let src = path.resolve(__dirname, './src')
-    let costLimit = arc['kill-switch'] && arc['kill-switch'][0] === 'limit' ? arc['kill-switch'][0].replace('$', '').toNumber() : 10
-
-
-
+    let costLimit = killSwitch && killSwitch[0][0] === 'limit' ? Number(killSwitch[0][1].replace('$', '')) : 100
+    let eventLambda = `${name}EventLambda`
+    let eventEvent = `${name}Event`
+    let eventTopic = `${name}EventTopic`
 
     let Variables = {
       ARC_APP_NAME: appName,
@@ -28,109 +24,86 @@ module.exports = function costDetection (arc, cfn) {
       ARC_ROLE: { Ref: 'Role' },
       NODE_ENV: 'staging', // Same as above, always default to staging; userland may mutate
       SESSION_TABLE_NAME: 'jwe',
-      KILL_SWITCH_LIMIT: costLimit,
-      COST_CATEGORY: { Ref: 'StackCostCategory' },
-      COST_LAMBDA: scheduleLambda
+      COST_LAMBDA: eventLambda
     }
 
-    // Add Lambda resources
-    cfn.Resources[scheduleLambda] = {
+    // Create the Lambda
+    cfn.Resources[eventLambda] = {
       Type: 'AWS::Serverless::Function',
       Properties: {
         Handler: 'index.handler',
         CodeUri: src,
         Runtime: 'nodejs14.x',
         MemorySize: 1152,
-        Timeout: 5,
+        Timeout: 30,
         Environment: { Variables },
         Policies: [
-          { 'Statement': [ {
-            'Effect': 'Allow',
-            'Action': [
-              'ce:GetCostAndUsage',
-              'ce:GetDimensionValues',
-              'ce:GetReservationCoverage',
-              'ce:GetReservationPurchaseRecommendation',
-              'ce:GetReservationUtilization',
-              'ce:GetTags',
-              'cloudformation:*',
+          { Statement: [ {
+            Effect: 'Allow',
+            Action: [
               'lambda:PutFunctionConcurrency',
               'tag:*'
             ],
-            'Resource': '*'
+            Resource: '*'
           } ]
-          } ]
+          } ],
+        Events: {
+          [eventEvent]: {
+            Type: 'SNS',
+            Properties: {
+              Topic: { Ref: eventTopic }
+            }
+          }
+        }
       }
     }
 
-
-    // Create the scheduled event rule
-    cfn.Resources[scheduleEvent] = {
-      Type: 'AWS::Events::Rule',
+    // Create the SNS topic
+    cfn.Resources[eventTopic] = {
+      Type: 'AWS::SNS::Topic',
       Properties: {
-        ScheduleExpression: rule,
-        Targets: [
+        DisplayName: name,
+        Subscription: []
+      }
+    }
+
+    // Create the Budget to trigger kill switch
+    cfn.Resources['StackBudget'] = {
+      Type: 'AWS::Budgets::Budget',
+      Properties: {
+        Budget: {
+          BudgetLimit: {
+            Amount: costLimit,
+            Unit: 'USD'
+          },
+          TimeUnit: 'MONTHLY',
+          BudgetType: 'COST',
+          CostFilters: {
+            // the format for value is <TagKey>$<TagValue> first $ is literal, second is replaced
+            TagKeyValue: [ { 'Fn::Sub': 'aws:cloudformation:stack-name$${AWS::StackName}' } ]
+          }
+        },
+        NotificationsWithSubscribers: [
           {
-            Arn: { 'Fn::GetAtt': [ scheduleLambda, 'Arn' ] },
-            Id: scheduleLambda
+            Subscribers: [
+              {
+                SubscriptionType: 'SNS',
+                Address: {
+                  Ref: eventTopic
+                }
+              }
+            ],
+            Notification: {
+              ComparisonOperator: 'GREATER_THAN',
+              NotificationType: 'FORECASTED',
+              // NotificationType: 'ACTUAL',
+              Threshold: 100,
+              ThresholdType: 'PERCENTAGE'
+            }
           }
         ]
       }
     }
-
-    // Wire the permission
-    cfn.Resources[schedulePermission] = {
-      Type: 'AWS::Lambda::Permission',
-      Properties: {
-        Action: 'lambda:InvokeFunction',
-        FunctionName: { Ref: scheduleLambda },
-        Principal: 'events.amazonaws.com',
-        SourceArn: { 'Fn::GetAtt': [ scheduleEvent, 'Arn' ] }
-      }
-    }
-
-
-    // cfn.Resources['StackCostCategory'] = {
-    //   Type: 'AWS::CE::CostCategory',
-    //   Properties: {
-    //     Name: { 'Fn::Sub': '${AWS::StackName}Cost' },
-    //     RuleVersion: 'CostCategoryExpression.v1',
-    //     Rules: { 'Fn::Sub': '[ {"Value": "StackResources", "Rule": { "Tags": { "Key": "aws:cloudformation:stack-name", "Values": ["${AWS::StackName}"] } } } ]' }
-    //   }
-    // }
-
-    cfn.Resources['StackBudget'] = {
-      'Type': 'AWS::Budgets::Budget',
-      'Properties': {
-        'Budget': {
-          'BudgetLimit': {
-            'Amount': costLimit,
-            'Unit': 'USD'
-          },
-          'TimeUnit': 'MONTHLY',
-        },
-        'BudgetType': 'COST',
-        'CostFilters': {
-          Tags: { 'Key': 'aws:cloudformation:stack-name', 'Values': [ { Ref: 'AWS::StackName' } ] }
-        }
-      },
-      'NotificationsWithSubscribers': [
-        {
-          'Notification': {
-            'NotificationType': 'ACTUAL',
-            'ComparisonOperator': 'GREATER_THAN',
-            'Threshold': 99
-          },
-          'Subscribers': [
-            {
-              'SubscriptionType': 'SNS',
-              'Address': 'email2@example.com'
-            }
-          ]
-        }
-      ]
-    }
-
 
   }
   return cfn

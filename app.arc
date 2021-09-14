@@ -3,15 +3,19 @@ arc-kill-switch
 
 @http
 get /
+post /x1000
 
 @macros
 kill-switch
 
 @kill-switch
-limit $1
+limit $0.01
 
 @events
-an-event
+wait-a-while
+
+@scheduled
+do-regularly rate(1 minute)
 
 @tables
 data
@@ -21,4 +25,4 @@ data
 
 @aws
 region us-east-1
-profile default
+profile begin-examples

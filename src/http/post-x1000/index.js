@@ -1,5 +1,14 @@
 // learn more about HTTP functions here: https://arc.codes/primitives/http
+let arc = require('@architect/functions')
 exports.handler = async function http (req) {
+
+  for (let i = 0; i < 1000; i++) {
+    await arc.events.publish({
+      name: 'wait-a-while',
+      payload: { },
+    })
+  }
+
   return {
     statusCode: 200,
     headers: {

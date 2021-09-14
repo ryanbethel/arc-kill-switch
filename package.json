@@ -1,19 +1,15 @@
 {
-  "name": "arc-macro-dns",
+  "name": "arc-kill-switch",
   "version": "1.0.0",
-  "description": "- must be deployed in us-east-1 - must be in the same account as the",
-  "main": "src/macros/dns/index.js",
+  "description": "Danger: This project simulates a runnaway serverless application. It may blow up your bill if not configured properly",
+  "main": "index.js",
   "scripts": {
     "lint": "eslint . --fix"
   },
-  "author": "Brian LeRoux <b@brian.io>",
+  "author": "Ryan Bethel",
   "dependencies": {
-    "@architect/architect": "^9.0.0",
-    "@architect/destroy": "^2.0.1",
-    "@architect/functions": "^3.13.3",
-    "@aws-sdk/client-lambda": "^3.31.0",
-    "@aws-sdk/client-resource-groups-tagging-api": "^3.31.0",
-    "extract-domain": "^2.2.1"
+    "@architect/architect": "^9.0.1",
+    "@architect/functions": "^4.0.0"
   },
   "devDependencies": {
     "@architect/eslint-config": "^1.0.0",
