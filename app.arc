@@ -1,21 +1,15 @@
 @app
-arc-kill-switch
+arc-budget-two
 
 @http
 get /
-post /x1000
 
 @macros
-kill-switch
+budget-watch
 
-@kill-switch
-limit $0.01
+@budget
+limit $40
 
-@events
-wait-a-while
-
-@scheduled
-do-regularly rate(1 minute)
 
 @tables
 data

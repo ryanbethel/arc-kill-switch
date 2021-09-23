@@ -1,7 +1,6 @@
 {
-  "name": "arc-kill-switch",
+  "name": "arc-budget-watch",
   "version": "1.0.0",
-  "description": "Danger: This project simulates a runnaway serverless application. It may blow up your bill if not configured properly",
   "main": "index.js",
   "scripts": {
     "lint": "eslint . --fix"
@@ -12,13 +11,10 @@
     "@architect/functions": "^4.0.0"
   },
   "devDependencies": {
-    "@architect/eslint-config": "^1.0.0",
+    "@architect/eslint-config": "^2.0.0",
     "eslint": "^7.11.0"
   },
   "eslintConfig": {
-    "rules": {
-      "require-await": 0
-    },
     "extends": "@architect/eslint-config"
   }
 }
