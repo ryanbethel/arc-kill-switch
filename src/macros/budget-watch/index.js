@@ -218,9 +218,9 @@ module.exports = function costDetection (arc, cfn) {
             if (event['RequestType'] === 'Delete' || event['RequestType'] === 'Update' ) {
               resetLambdas()
             } else if (event['RequestType'] === 'Create' ) {
-              resetLambdas()
+              sendSuccess()
             } else {
-              resetLambdas()
+              sendSuccess()
             }
  
 
